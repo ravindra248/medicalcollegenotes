@@ -539,6 +539,16 @@ function updateNavUI(){
   }
 }
 
+// PDF VIEWER — open in new tab
+window.openPdfViewer = function(url, title){
+  const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(match){
+    window.open(`https://drive.google.com/file/d/${match[1]}/preview`, '_blank');
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 // STUDENT LOGIN
 window.showLoginModal = ()=>{ document.getElementById('loginModal').classList.add('open'); }
 window.closeLoginModal = ()=>{ document.getElementById('loginModal').classList.remove('open'); }

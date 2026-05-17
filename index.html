@@ -156,6 +156,20 @@
     .about-section p{font-size:14px;color:var(--muted);line-height:1.8;margin-bottom:0.75rem;}
     .about-section strong{color:var(--text);}
 
+    /* PDF VIEWER MODAL */
+    .pdf-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;flex-direction:column;}
+    .pdf-modal-overlay.open{display:flex;}
+    .pdf-modal-header{background:#1a2332;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+    .pdf-modal-title{color:white;font-size:15px;font-weight:500;}
+    .pdf-modal-actions{display:flex;gap:10px;align-items:center;}
+    .pdf-close-btn{background:rgba(255,255,255,0.1);color:white;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;}
+    .pdf-download-btn{background:var(--primary);color:white;border:none;padding:6px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;}
+    .pdf-viewer-frame{flex:1;width:100%;border:none;}
+
+    /* VIEW BUTTON */
+    .view-btn{border:none;padding:5px 13px;border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;font-weight:500;cursor:pointer;background:var(--pl);color:var(--primary);transition:all 0.15s;margin-right:6px;}
+    .view-btn:hover{background:var(--primary);color:white;}
+
     footer{background:var(--text);color:rgba(255,255,255,0.7);text-align:center;padding:2rem;font-size:13px;}
     footer strong{color:white;}
 
@@ -321,9 +335,8 @@
         <button class="admin-tab" onclick="switchAdminTab('files',this)">📁 Uploaded Files</button>
       </div>
 
-      <!-- NOTES UPLOAD FORM — Google Drive Link -->
+      <!-- NOTES UPLOAD FORM — Google Drive Link OR PDF -->
       <div id="notesForm" class="admin-form">
-        <p style="font-size:13px;color:rgba(255,255,255,0.8);margin-bottom:4px;">📌 PDF pehle Google Drive mein upload karo → link copy karo → yahan paste karo</p>
         <select id="adminSubject" onchange="populateAdminChapters()">
           <option value="">Select Subject</option>
         </select>
@@ -336,10 +349,27 @@
           </div>
           <input type="text" id="customAdminChapter" placeholder="✏️ Type chapter name..." />
         </div>
-        <input type="text" id="adminDriveLink" placeholder="📎 Google Drive link paste karo (Anyone with link)" />
-        <input type="text" id="adminFileName" placeholder="File name (e.g. Chapter 1 - Introduction.pdf)" />
+        <div style="display:flex;gap:8px;margin-bottom:4px;">
+          <button type="button" class="admin-tab active" id="driveTabBtn" onclick="switchUploadMethod('drive')" style="flex:1;padding:8px;">🔗 Google Drive Link</button>
+          <button type="button" class="admin-tab" id="pdfTabBtn" onclick="switchUploadMethod('pdf')" style="flex:1;padding:8px;">📄 Upload PDF</button>
+        </div>
+        <div id="driveInputWrap">
+          <input type="text" id="adminDriveLink" placeholder="📎 Paste Google Drive link here" />
+        </div>
+        <div id="pdfInputWrap" style="display:none;">
+          <div class="file-drop-admin" onclick="document.getElementById('adminPdfFile').click()">
+            📎 Select PDF file (click here)
+            <input type="file" id="adminPdfFile" accept=".pdf" style="display:none;" onchange="adminFileSelected(this,'notesLabel')" />
+          </div>
+        </div>
+        <input type="text" id="adminFileName" placeholder="File name (e.g. Chapter 1 Notes)" />
+        <div id="notesLabel" style="font-size:12px;color:rgba(255,255,255,0.7);display:none;"></div>
+        <div class="upload-progress" id="notesProgress">
+          <div class="progress-bar"><div class="progress-fill" id="notesFill"></div></div>
+          <div class="progress-text" id="notesProgressText">Uploading...</div>
+        </div>
         <button class="btn btn-green" onclick="uploadNote()">✅ Add Note</button>
-        <p style="font-size:11px;color:rgba(255,255,255,0.5);">💡 Drive link mein "Anyone with the link" sharing ON karo</p>
+        <p style="font-size:11px;color:rgba(255,255,255,0.5);">💡 For Drive link: Share → "Anyone with the link" → Copy link</p>
       </div>
 
       <!-- PAPERS UPLOAD FORM — Google Drive Link -->
@@ -420,6 +450,18 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
+<!-- PDF VIEWER MODAL -->
+<div class="pdf-modal-overlay" id="pdfViewerModal">
+  <div class="pdf-modal-header">
+    <div class="pdf-modal-title" id="pdfViewerTitle">📄 Viewing Note</div>
+    <div class="pdf-modal-actions">
+      <button class="pdf-close-btn" onclick="closePdfViewer()">✕ Close</button>
+      <button class="pdf-download-btn" id="pdfDownloadBtn" onclick="downloadPdf()">⬇ Download</button>
+    </div>
+  </div>
+  <iframe class="pdf-viewer-frame" id="pdfViewerFrame" src=""></iframe>
+</div>
+
 <!-- GLOBAL FUNCTIONS — available immediately -->
 <script>
   function showLoginModal(){ document.getElementById('loginModal').classList.add('open'); }
@@ -468,6 +510,7 @@ let isAdmin = false;
 // AUTH STATE
 onAuthStateChanged(auth, user => {
   currentUser = user;
+  window._currentUser = user;
   isAdmin = user && user.email === ADMIN_EMAIL;
   updateNavUI();
   if(isAdmin){
@@ -578,7 +621,67 @@ window.adminFileSelected = (input, labelId)=>{
   if(input.files[0]){ lbl.style.display='block'; lbl.textContent='✅ Selected: '+input.files[0].name; }
 }
 
-// CONVERT GOOGLE DRIVE LINK TO DIRECT LINK
+// SWITCH UPLOAD METHOD
+let uploadMethod = 'drive';
+window.switchUploadMethod = (method)=>{
+  uploadMethod = method;
+  document.getElementById('driveTabBtn').classList.toggle('active', method==='drive');
+  document.getElementById('pdfTabBtn').classList.toggle('active', method==='pdf');
+  document.getElementById('driveInputWrap').style.display = method==='drive'?'block':'none';
+  document.getElementById('pdfInputWrap').style.display = method==='pdf'?'block':'none';
+}
+
+// UPLOAD NOTE — Google Drive link OR direct PDF
+window.uploadNote = async()=>{
+  if(!isAdmin){ showToast('❌ Admin only!','error'); return; }
+  const subj = document.getElementById('adminSubject').value;
+  const chSel = document.getElementById('adminChapter').value;
+  const chCustom = document.getElementById('customAdminChapter')?.value.trim();
+  const chapter = chSel==='__custom__' ? chCustom : chSel;
+  const fileName = document.getElementById('adminFileName').value.trim();
+  if(!subj||!chapter){ showToast('❌ Subject and chapter required!','error'); return; }
+
+  if(uploadMethod==='drive'){
+    const driveLink = document.getElementById('adminDriveLink').value.trim();
+    if(!driveLink){ showToast('❌ Google Drive link required!','error'); return; }
+    const url = convertDriveLink(driveLink);
+    try{
+      await addDoc(collection(db,'uploads'),{
+        type:'note', subject:subj, chapter, fileName:fileName||chapter,
+        url, uploadedAt: new Date().toISOString()
+      });
+      showToast('✅ Note added!','success');
+      document.getElementById('adminDriveLink').value='';
+      document.getElementById('adminFileName').value='';
+    }catch(e){ showToast('❌ Error: '+e.message,'error'); }
+  } else {
+    // Direct PDF upload via Firebase Storage
+    const file = document.getElementById('adminPdfFile').files[0];
+    if(!file){ showToast('❌ Select a PDF file!','error'); return; }
+    const progressDiv = document.getElementById('notesProgress');
+    const fill = document.getElementById('notesFill');
+    const progressText = document.getElementById('notesProgressText');
+    progressDiv.style.display='block';
+    try{
+      const {getStorage, ref, uploadBytesResumable, getDownloadURL} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+      const storageRef = ref(storage, 'notes/'+subj+'/'+chapter+'/'+file.name);
+      const task = uploadBytesResumable(storageRef, file);
+      task.on('state_changed',
+        snap=>{ const pct=Math.round(snap.bytesTransferred/snap.totalBytes*100); fill.style.width=pct+'%'; progressText.textContent='Uploading... '+pct+'%'; },
+        err=>{ showToast('❌ Upload failed: '+err.message,'error'); progressDiv.style.display='none'; },
+        async()=>{
+          const url = await getDownloadURL(task.snapshot.ref);
+          await addDoc(collection(db,'uploads'),{
+            type:'note', subject:subj, chapter, fileName:fileName||file.name,
+            url, uploadedAt: new Date().toISOString()
+          });
+          progressDiv.style.display='none'; fill.style.width='0%';
+          showToast('✅ PDF uploaded!','success');
+        }
+      );
+    }catch(e){ showToast('❌ Error: '+e.message,'error'); progressDiv.style.display='none'; }
+  }
+}
 function convertDriveLink(link){
   // Handle both /file/d/ and /open?id= formats
   let fileId = '';
@@ -679,7 +782,7 @@ window.filterPapers = (subj, btn)=>{
 
 function renderPapers(papers){
   const grid = document.getElementById('papersGrid');
-  if(!papers.length){ grid.innerHTML='<p style="color:var(--muted);font-size:14px;padding:1rem 0;">Abhi koi paper nahi hai. Jald aayenge!</p>'; return; }
+  if(!papers.length){ grid.innerHTML='<p style="color:var(--muted);font-size:14px;padding:1rem 0;">No papers yet. Coming soon!</p>'; return; }
   grid.innerHTML = papers.map(p=>`
     <div class="paper-card" data-subject="${p.subject}">
       <div class="paper-icon">
@@ -689,10 +792,13 @@ function renderPapers(papers){
         <div class="paper-title">${p.subject}</div>
         <div class="paper-meta">${p.year} · ${p.exam}</div>
       </div>
-      ${currentUser
-        ? `<button class="dl-btn available" onclick="window.open('${p.url}','_blank')">Download</button>`
-        : `<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login</button>`
-      }
+      <div style="display:flex;gap:6px;">
+        <button class="view-btn" onclick="openPdfViewer('${p.url}','${p.subject} ${p.year}')">👁 View</button>
+        ${currentUser
+          ? `<button class="dl-btn available" onclick="window.open('${p.url}','_blank')">Download</button>`
+          : `<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login</button>`
+        }
+      </div>
       ${isAdmin ? `<button class="dl-btn" style="background:#fee2e2;color:#dc2626;margin-left:4px;" onclick="deleteUpload('${p.id}','${p.url}')">🗑</button>` : ''}
     </div>`).join('');
 }
@@ -762,12 +868,18 @@ window.showChapters = async function(i){
   const notes = await getUploadedNotes();
   document.getElementById('chaptersGrid').innerHTML=s.chapters.map(c=>{
     const note = notes.find(n=>n.subject===s.name && (n.chapter===c.num+' – '+c.title || n.chapter===c.title));
-    let btn = '';
+    let btns = '';
     if(note){
-      if(currentUser) btn=`<button class="dl-btn available" onclick="window.open('${note.url}','_blank')">⬇ Download</button>`;
-      else btn=`<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login karo</button>`;
+      // View button — everyone can view (no login needed)
+      btns += `<button class="view-btn" onclick="openPdfViewer('${note.url}','${c.title}')">👁 View</button>`;
+      // Download button — login required
+      if(currentUser){
+        btns += `<button class="dl-btn available" onclick="window.open('${note.url}','_blank')">⬇ Download</button>`;
+      } else {
+        btns += `<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login to Download</button>`;
+      }
     } else {
-      btn=`<button class="dl-btn pending">Jald aayega</button>`;
+      btns = `<button class="dl-btn pending">Coming Soon</button>`;
     }
     return `<div class="chapter-card">
       <div class="chapter-top">
@@ -775,7 +887,7 @@ window.showChapters = async function(i){
         <div><div class="chapter-title">${c.title}</div><div class="chapter-sub">${c.sub}</div></div>
       </div>
       <div class="chapter-tags">${c.tags.map(t=>`<span class="tag ${tagCls[t]||'tag-blue'}">${t}</span>`).join('')}</div>
-      <div class="chapter-footer"><span>${note?'✅ Available':'Pending'}</span>${btn}</div>
+      <div class="chapter-footer"><span>${note?'✅ Available':'Pending'}</span><div style="display:flex;gap:6px;">${btns}</div></div>
     </div>`;
   }).join('');
   const sec=document.getElementById('chaptersSection');
@@ -827,7 +939,7 @@ window.filterAssignments=(subj,btn)=>{
 
 function renderAssignments(assignments){
   const grid=document.getElementById('assignmentsGrid');
-  if(!assignments.length){ grid.innerHTML='<p style="color:var(--muted);font-size:14px;padding:1rem 0;">Koi assignment nahi hai abhi.</p>'; return; }
+  if(!assignments.length){ grid.innerHTML='<p style="color:var(--muted);font-size:14px;padding:1rem 0;">No assignments yet.</p>'; return; }
   grid.innerHTML=assignments.map(a=>`
     <div class="paper-card">
       <div class="paper-icon" style="background:#eeedfe;">
@@ -837,9 +949,12 @@ function renderAssignments(assignments){
         <div class="paper-title">${a.title}</div>
         <div class="paper-meta">${a.subject}${a.due?' · Due: '+a.due:''}</div>
       </div>
-      ${currentUser
-        ?`<button class="dl-btn available" onclick="window.open('${a.url}','_blank')">Download</button>`
-        :`<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login</button>`}
+      <div style="display:flex;gap:6px;">
+        <button class="view-btn" onclick="openPdfViewer('${a.url}','${a.title}')">👁 View</button>
+        ${currentUser
+          ?`<button class="dl-btn available" onclick="window.open('${a.url}','_blank')">Download</button>`
+          :`<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login</button>`}
+      </div>
       ${isAdmin?`<button class="dl-btn" style="background:#fee2e2;color:#dc2626;margin-left:4px;" onclick="deleteUpload('${a.id}','${a.url}')">🗑</button>`:''}
     </div>`).join('');
 }

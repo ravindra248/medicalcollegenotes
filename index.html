@@ -803,7 +803,7 @@ function renderPapers(papers){
         <div class="paper-meta">${p.year} · ${p.exam}</div>
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="view-btn" onclick="openPdfViewer('${p.url}','${p.subject} ${p.year}')">👁 View</button>
+        <button class="view-btn" onclick="(()=>{const m='${p.url}'.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);window.open(m?'https://drive.google.com/file/d/'+m[1]+'/preview':'${p.url}','_blank')})()">👁 View</button>
         ${currentUser
           ? `<button class="dl-btn available" onclick="window.open('${p.url}','_blank')">Download</button>`
           : `<button class="dl-btn locked" onclick="showLoginModal()">🔒 Login</button>`
@@ -880,9 +880,11 @@ window.showChapters = async function(i){
     const note = notes.find(n=>n.subject===s.name && (n.chapter===c.num+' – '+c.title || n.chapter===c.title));
     let btns = '';
     if(note){
-      // View button — everyone can view (no login needed)
-      btns += `<button class="view-btn" onclick="openPdfViewer('${note.url}','${c.title}')">👁 View</button>`;
-      // Download button — login required
+      // View — opens PDF directly, no login needed
+      const match = note.url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      const viewUrl = match ? `https://drive.google.com/file/d/${match[1]}/preview` : note.url;
+      btns += `<button class="view-btn" onclick="window.open('${viewUrl}','_blank')">👁 View</button>`;
+      // Download — login required
       if(currentUser){
         btns += `<button class="dl-btn available" onclick="window.open('${note.url}','_blank')">⬇ Download</button>`;
       } else {
